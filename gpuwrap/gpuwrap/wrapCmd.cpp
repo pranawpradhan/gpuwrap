@@ -38,6 +38,9 @@ MStatus WrapCmd::doIt(const MArgList& args) {
 	status = GetGeometryPaths();
 	CHECK_MSTATUS_AND_RETURN_IT(status);
 	// Create deformer
+
+
+
 	// Calculate binding for wrap deformer
 	// Connect the driver mesh to the wrap deformer
 	// Store all binding information on the deformer
@@ -80,6 +83,12 @@ MStatus WrapCmd::GetGeometryPaths() {
 	return MS::kSuccess;
 }
 
+bool IsShapeNode(MDagPath& path) {
+	return path.node().hasFn(MFn::kMesh) ||
+		path.node().hasFn(MFn::kNurbsCurve) ||
+		path.node().hasFn(MFn::kNurbsSurface);
+}
+
 MStatus WrapCmd::GetShapeNode(MDagPath& path, bool intermediate) {
 	MStatus status;
 	/* Check to see if it's a shape node first.*/
@@ -98,7 +107,7 @@ MStatus WrapCmd::GetShapeNode(MDagPath& path, bool intermediate) {
 			CHECK_MSTATUS_AND_RETURN_IT(status);
 			MFnDagNode fnNode(path, &status);
 			CHECK_MSTATUS_AND_RETURN_IT(status);
-			if ((!fnNode.isIntermediateObject && !intermediate) || (fnNode.isIntermediateObject && intermediate)) {
+			if ((!fnNode.isIntermediateObject() && !intermediate) || (fnNode.isIntermediateObject() && intermediate)) {
 				return MS::kSuccess;
 			}
 			// Go back to transform node and go to the next shape
@@ -106,12 +115,6 @@ MStatus WrapCmd::GetShapeNode(MDagPath& path, bool intermediate) {
 		}
 	}
 	return MS::kFailure;
-}
-
-bool IsShapeNode(MDagPath& path) {
-	return path.node().hasFn(MFn::kMesh) || 
-		   path.node().hasFn(MFn::kNurbsCurve) || 
-		   path.node().hasFn(MFn::kNurbsSurface);
 }
 
 MStatus WrapCmd::redoIt() {

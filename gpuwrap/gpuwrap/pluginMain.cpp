@@ -30,9 +30,9 @@ MStatus uninitializePlugin(MObject obj) {
 	MStatus status;
 	MFnPlugin plugin(obj);
 
-	status = plugin.deregisterNode(WrapCmd::kName);
+	status = plugin.deregisterCommand(WrapCmd::kName);
 	CHECK_MSTATUS_AND_RETURN_IT(status);
-	status = plugin.deregisterCommand(Wrap::id);
+	status = plugin.deregisterNode(Wrap::id);
 	CHECK_MSTATUS_AND_RETURN_IT(status);
 	return status;
 }
