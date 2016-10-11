@@ -1,16 +1,18 @@
 #include "wrapCmd.h"
+#include "wrapDeformer.h"
 
 #include <maya/MArgDatabase.h>
 #include <maya/MSyntax.h>
 #include <maya/MFnDagNode.h>
 #include <maya/MGlobal.h>
 #include <maya/MItSelectionList.h>
+#include <maya/MItDependencyGraph.h>
 
-const char* WrapCmd::kName = "Wrap";
+const char* WrapCmd::kName = "awWrap";
 const char* WrapCmd::kNameFlagShort = "-n";
 const char* WrapCmd::kNameFlagLong = "-name";
 
-WrapCmd::WrapCmd() : name_("Wrap#") {}
+WrapCmd::WrapCmd() : name_("awWrap#") {}
 
 MSyntax WrapCmd::newSyntax() {
 	MSyntax syntax;
@@ -26,7 +28,7 @@ void* WrapCmd::creator() {
 }
 
 bool WrapCmd::isUndoable() const {
-	return false;
+	return true;
 }
 
 MStatus WrapCmd::doIt(const MArgList& args) {
@@ -38,12 +40,12 @@ MStatus WrapCmd::doIt(const MArgList& args) {
 	status = GetGeometryPaths();
 	CHECK_MSTATUS_AND_RETURN_IT(status);
 	// Create deformer
-
-
-
-	// Calculate binding for wrap deformer
-	// Connect the driver mesh to the wrap deformer
-	// Store all binding information on the deformer
+	MString command = "deformer -type awWrap -n \"" + name_ + "\"";
+	for (unsigned int i = 0; i < pathDriven_.length(); ++i) {
+		command += " " + pathDriven_[i].partialPathName();
+	}
+	status = dgMod_.commandToExecute(command);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
 	return redoIt();
 }
 
@@ -117,12 +119,63 @@ MStatus WrapCmd::GetShapeNode(MDagPath& path, bool intermediate) {
 	return MS::kFailure;
 }
 
+MStatus WrapCmd::GetLatestWrapNode() {
+	MStatus status;
+	MObject oDriven = pathDriven_[0].node();
+	MItDependencyGraph itdg(
+		oDriven,
+		MFn::kGeometryFilt,
+		MItDependencyGraph::kUpstream,
+		MItDependencyGraph::kDepthFirst,
+		MItDependencyGraph::kNodeLevel,
+		&status);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+
+	MObject oDeformerNode;
+	for (; !itdg.isDone(); itdg.next()) {
+		oDeformerNode = itdg.currentItem();
+		MFnDependencyNode fnNode(oDeformerNode, &status);
+		CHECK_MSTATUS_AND_RETURN_IT(status);
+		if (fnNode.typeId() == Wrap::id)
+		{
+			oWrapNode_ = oDeformerNode;
+			return MS::kSuccess;
+		}
+
+	}
+
+	return MS::kFailure;
+}
+
 MStatus WrapCmd::redoIt() {
 	MStatus status;
+
+
+	// Calculate binding for wrap deformer
+	status = dgMod_.doIt();
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+	// After calling the doIt method, the wrap deformer should be created on all the passed in geometry.
+	// If you're using a reference Pipeline where you're referencing in meshes, and you create a wrap deformer on
+	// it, Maya will create a shapeDeformed mesh
+
+	// Reacquire the paths because on reference geo, a new driven path is created (the shapeDeformed).
+	status = GetGeometryPaths();
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+
+	// Get the created wrap deformer node
+	status = GetLatestWrapNode();
+
+	// Connect the driver mesh to the wrap deformer
+	MFnDependencyNode fnNode(oWrapNode_, &status);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+	setResult(fnNode.name());
+	// Store all binding information on the deformer
 	return status;
 }
 
 MStatus WrapCmd::undoIt() {
 	MStatus status;
+	status = dgMod_.undoIt();
+	CHECK_MSTATUS_AND_RETURN_IT(status);
 	return MS::kSuccess;
 }

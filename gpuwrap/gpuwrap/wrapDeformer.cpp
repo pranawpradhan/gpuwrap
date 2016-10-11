@@ -14,7 +14,7 @@
 MTypeId Wrap::id(0x0014456B);
 
 // might conflict because the command has the same kName
-const char* Wrap::kName = "Wrap";
+const char* Wrap::kName = "awWrap";
 
 MObject Wrap::aDriverGeo;
 MObject Wrap::aBindData;
@@ -77,7 +77,7 @@ MStatus Wrap::initialize() {
 	attributeAffects(aBarycentricWeights, outputGeom);
 	attributeAffects(aBindMatrix, outputGeom);
 
-	MGlobal::executeCommand("makePaintable -attrType multiFloat -sm deformer cvWrap weights");
+	MGlobal::executeCommand("makePaintable -attrType multiFloat -sm deformer awWrap weights");
 
 	return MS::kSuccess;
 }

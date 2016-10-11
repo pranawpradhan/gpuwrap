@@ -36,6 +36,11 @@ private:
 	*/
 	MStatus GetGeometryPaths();
 
+	/**
+	 * Get latest wrap node in the history of the deformed shape
+	 */
+	MStatus GetLatestWrapNode();
+
 	/*
 	Ensures that the given DAG path points to a non-intermediate shape node.
 	@param[in,out] path Path to a dag node that could be a transform or a shape.
@@ -48,7 +53,7 @@ private:
 	MString name_; // Name of Wrap node to create
 	MDagPath pathDriver_; // Path to the shape wrapping the other shape
 	MDagPathArray pathDriven_; // Path to the shapes being wrapped
-	MSelectionList selectionList_; // Selected command input nodes
+	MSelectionList selectionList_; // Selected command input 
 	MDGModifier dgMod_;
 	MObject oWrapNode_; // MObject to the wrap node in focus.
 };
