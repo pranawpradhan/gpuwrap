@@ -30,7 +30,6 @@ struct BindData {
 	// Vector is per-vertex storage on the deforming mesh.
 	// For each vertex on the deforming mesh, it's storing the 3 triangle mesh ids
 	std::vector<MIntArray> triangleVertices;
-
 };
 
 /*
@@ -75,7 +74,7 @@ private:
 	*/
 	MStatus GetShapeNode(MDagPath& path, bool intermediate = false);
 
-	MStatus CalculateBinding(MDagPath& path);
+	MStatus CalculateBinding(MDagPath& path, MDGModifier& dgMod);
 	
 	/* 
 	 * Get the barycentric coordinates of point P in the triangle specified by points A,B,C

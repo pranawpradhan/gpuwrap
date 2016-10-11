@@ -169,9 +169,25 @@ MStatus WrapCmd::redoIt() {
 	status = GetLatestWrapNode();
 
 	// Calculate the binding
-	status = CalculateBinding(pathDriver_);
+	MDGModifier dgMod;
+	status = CalculateBinding(pathDriver_, dgMod);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+	status = dgMod.doIt();
 	CHECK_MSTATUS_AND_RETURN_IT(status);
 	// Connect the driver mesh to the wrap deformer
+	MFnDagNode fnDriver(pathDriver_);
+	MPlug plugDriverMesh = fnDriver.findPlug("worldMesh", false, &status);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+
+	status = plugDriverMesh.selectAncestorLogicalIndex(0, plugDriverMesh.attribute());
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+	MPlug plugDriverGeo(oWrapNode_, Wrap::aDriverGeo);
+	MDGModifier dgMod2;
+	dgMod2.connect(plugDriverMesh, plugDriverGeo);
+
+	status = dgMod2.doIt();
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+
 	MFnDependencyNode fnNode(oWrapNode_, &status);
 	CHECK_MSTATUS_AND_RETURN_IT(status);
 	setResult(fnNode.name());
@@ -179,7 +195,7 @@ MStatus WrapCmd::redoIt() {
 	return status;
 }
 
-MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh) {
+MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh, MDGModifier& dgMod) {
 	MStatus status;
 	BindData bindData;
 
@@ -216,8 +232,16 @@ MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh) {
 		}
 	}
 
+	MPlug plugBindData(oWrapNode_, Wrap::aBindData);
 
 	for (unsigned int geomIndex = 0; geomIndex < pathDriven_.length(); ++geomIndex) {
+		// Get plugs to binding attributes for this geometry
+		MPlug plugBind = plugBindData.elementByLogicalIndex(geomIndex, &status);
+		CHECK_MSTATUS_AND_RETURN_IT(status);
+		MPlug plugTriangleVerts = plugBind.child(Wrap::aTriangleVerts, &status);
+		CHECK_MSTATUS_AND_RETURN_IT(status);
+		MPlug plugBarycentricWeights = plugBind.child(Wrap::aBarycentricWeights, &status);
+
 		MItGeometry itGeo(pathDriven_[geomIndex], &status);
 		MPointArray inputPoints;
 		// Grabbing points straight out of the iterator is usually more efficient than using the iterator
@@ -226,8 +250,11 @@ MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh) {
 		CHECK_MSTATUS_AND_RETURN_IT(status);
 
 		MPointOnMesh pointOnMesh;
+		// Resizing vectors
 		bindData.coords.resize(itGeo.count());
+		bindData.triangleVertices.resize(itGeo.count());
 
+		// By the end of the loop, bind data will hold the per-vertex coords & verts for each triangle.
 		for (unsigned int i = 0; i < inputPoints.length(); i++) {
 			bindData.intersector.getClosestPoint(inputPoints[i], pointOnMesh);
 			// Convert into world space
@@ -238,14 +265,49 @@ MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh) {
 
 			MPoint closestPoint = MPoint(pointOnMesh.getPoint()) * driverMatrix;
 
-			MIntArray& triangleVertices = bindData.perFaceTriangleVertices[faceId][triangleId];
+			bindData.triangleVertices[i] = bindData.perFaceTriangleVertices[faceId][triangleId];
+			
 			// Since there's now a look-up table, can access the three vertices that make up the triangle
 			GetBarycentricCoordinates(closestPoint, 
-									  bindData.driverPoints[triangleVertices[0]],
-									  bindData.driverPoints[triangleVertices[1]],
-									  bindData.driverPoints[triangleVertices[2]],
+									  bindData.driverPoints[bindData.triangleVertices[i][0]],
+									  bindData.driverPoints[bindData.triangleVertices[i][1]],
+									  bindData.driverPoints[bindData.triangleVertices[i][2]],
 									  bindData.coords[i]);
 																		  
+
+		}
+
+		// Store the data in the wrap node data block.
+		// Iterate through the geometry one by one because we need to grab the logical index 
+		// out of geometry iterator because as we're iterating, indices aren't going to be continuous
+		for (int i = 0; !itGeo.isDone(); itGeo.next(), ++i) {
+			int logicalIndex = itGeo.index();
+			// Storing triangle vertices
+			MFnNumericData fnNumericData;
+			MObject oNumericData = fnNumericData.create(MFnNumericData::k3Int, &status);
+			CHECK_MSTATUS_AND_RETURN_IT(status);
+			status = fnNumericData.setData3Int(
+				bindData.triangleVertices[i][0],
+				bindData.triangleVertices[i][1],
+				bindData.triangleVertices[i][2]);
+
+			MPlug plugTriangleVertsElement = plugTriangleVerts.elementByLogicalIndex(logicalIndex, &status);
+			CHECK_MSTATUS_AND_RETURN_IT(status);
+			status = dgMod.newPlugValue(plugTriangleVertsElement, oNumericData);
+			CHECK_MSTATUS_AND_RETURN_IT(status);
+
+			// store barycentric weights
+			oNumericData = fnNumericData.create(MFnNumericData::k3Float, &status);
+			CHECK_MSTATUS_AND_RETURN_IT(status);
+			status = fnNumericData.setData3Float(
+				bindData.coords[i][0],
+				bindData.coords[i][1],
+				bindData.coords[i][2]);
+
+			MPlug plugBarycentricWeightsElement = plugBarycentricWeights.elementByLogicalIndex(logicalIndex, &status);
+			CHECK_MSTATUS_AND_RETURN_IT(status);
+			status = dgMod.newPlugValue(plugBarycentricWeightsElement, oNumericData);
+			CHECK_MSTATUS_AND_RETURN_IT(status);
 
 		}
 		
