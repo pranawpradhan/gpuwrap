@@ -10,15 +10,20 @@
 #include <maya/MSelectionList.h>
 #include <maya/MDGModifier.h>
 #include <maya/MMeshIntersector.h>
+#include <maya/MPointArray.h>
 
-struct BaryCoords
-{
+struct BaryCoords {
 	float coords[3];
 	float operator[](int index) const { return coords[index]; }
-	float operator[](int index) { return coords[index]; }
+	float& operator[](int index) { return coords[index]; }
 };
 
 struct BindData {
+	MPointArray driverPoints;
+	// The first vector will be accessed by the face id
+	// The second vector will be accessed by the triangle id on that face
+	// MIntArray will be 3 vertex indices on that triangle
+	std::vector<std::vector<MIntArray>> perFaceTriangleVertices; /**< The per-face per-triangle vertex id of the driver*/
 	MMeshIntersector intersector;
 	std::vector<BaryCoords> coords;
 	// MIntArray will always be length 3
@@ -71,6 +76,16 @@ private:
 	MStatus GetShapeNode(MDagPath& path, bool intermediate = false);
 
 	MStatus CalculateBinding(MDagPath& path);
+	
+	/* 
+	 * Get the barycentric coordinates of point P in the triangle specified by points A,B,C
+	 * @param[in] P - The sample point
+	 * @param[in] A - Triangle point
+	 * @param[in] B - Triangle point
+	 * @param[in] C - Triangle point
+	 * @param[out] coords Barycentric coordinates storage
+	 */
+	void GetBarycentricCoordinates(const MPoint& P, const MPoint& A, const MPoint& B, const MPoint& C, BaryCoords& coords);
 
 	MString name_; // Name of Wrap node to create
 	MDagPath pathDriver_; // Path to the shape wrapping the other shape

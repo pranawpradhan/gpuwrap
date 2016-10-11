@@ -9,6 +9,7 @@
 #include <maya/MItDependencyGraph.h>
 #include <maya/MItGeometry.h>
 #include <maya/MPointArray.h>
+#include <maya/MFnMesh.h>
 
 const char* WrapCmd::kName = "awWrap";
 const char* WrapCmd::kNameFlagShort = "-n";
@@ -187,6 +188,35 @@ MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh) {
 	status = bindData.intersector.create(oBindMesh, driverMatrix);
 	CHECK_MSTATUS_AND_RETURN_IT(status);
 
+	MFnMesh fnBindMesh(pathBindMesh, &status);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+	fnBindMesh.getPoints(bindData.driverPoints, MSpace::kWorld);
+	// Resize the pftv vector to the polygon count
+	bindData.perFaceTriangleVertices.resize(fnBindMesh.numPolygons());
+
+	// Get triangles on the bind mesh, iterate through them to create a table lookup of triangle points
+	// Vertex count is per-polygon vertex count
+	// Vertex list is the actual indices
+	// Can use to iterate over all faces and pull out triangle information
+	MIntArray vertexCount, vertexList;
+	status = fnBindMesh.getVertices(vertexCount, vertexList);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+	MIntArray triangleCounts, triangleVertices;
+	status = fnBindMesh.getTriangles(triangleCounts, triangleVertices);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+
+	for (unsigned int faceId = 0, triIter = 0; faceId < vertexCount.length(); ++faceId) {
+		bindData.perFaceTriangleVertices[faceId].resize(triangleCounts[faceId]);
+		// Iterate through each triangle of each face
+		for (int triId = 0; triId < triangleCounts[faceId]; ++triId) {
+			bindData.perFaceTriangleVertices[faceId][triId].setLength(3);
+			bindData.perFaceTriangleVertices[faceId][triId][0] = triangleVertices[triIter++];
+			bindData.perFaceTriangleVertices[faceId][triId][1] = triangleVertices[triIter++];
+			bindData.perFaceTriangleVertices[faceId][triId][2] = triangleVertices[triIter++];
+		}
+	}
+
+
 	for (unsigned int geomIndex = 0; geomIndex < pathDriven_.length(); ++geomIndex) {
 		MItGeometry itGeo(pathDriven_[geomIndex], &status);
 		MPointArray inputPoints;
@@ -196,18 +226,56 @@ MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh) {
 		CHECK_MSTATUS_AND_RETURN_IT(status);
 
 		MPointOnMesh pointOnMesh;
+		bindData.coords.resize(itGeo.count());
+
 		for (unsigned int i = 0; i < inputPoints.length(); i++) {
 			bindData.intersector.getClosestPoint(inputPoints[i], pointOnMesh);
 			// Convert into world space
 			// calling getPoint is going to be in the local space of the driver mesh
 
+			int faceId = pointOnMesh.faceIndex();
+			int triangleId = pointOnMesh.triangleIndex();
+
 			MPoint closestPoint = MPoint(pointOnMesh.getPoint()) * driverMatrix;
+
+			MIntArray& triangleVertices = bindData.perFaceTriangleVertices[faceId][triangleId];
+			// Since there's now a look-up table, can access the three vertices that make up the triangle
+			GetBarycentricCoordinates(closestPoint, 
+									  bindData.driverPoints[triangleVertices[0]],
+									  bindData.driverPoints[triangleVertices[1]],
+									  bindData.driverPoints[triangleVertices[2]],
+									  bindData.coords[i]);
+																		  
 
 		}
 		
 	}
 	return MS::kSuccess;
 }
+
+void WrapCmd::GetBarycentricCoordinates(const MPoint& P, const MPoint& A, const MPoint& B, const MPoint& C, BaryCoords& coords) {
+	// Compute the normal of the triangle
+	MVector N = (B - A) ^ (C - A);
+	MVector unitN = N.normal();
+	// Compute twice area of triangle ABC
+	double areaABC = unitN * N;
+	// If the triangle is degenerate (point on top of each other), just use one of the points
+	if (areaABC == 0.0) {
+		coords[0] = 1.0f;
+		coords[1] = 0.0f;
+		coords[2] = 0.0f;
+		return;
+	}
+	// Compute A
+	double areaPBC = unitN * ((B - P) ^ (C - P));
+	coords[0] = (float)(areaPBC / areaABC);
+	// Compute B
+	double areaPCA = unitN * ((C - P) ^ (A - P));
+	coords[1] = (float)(areaPCA / areaABC);
+	// Compute C
+	coords[2] = 1.0f - coords[0] - coords[1];
+}
+
 
 MStatus WrapCmd::undoIt() {
 	MStatus status;
