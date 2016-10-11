@@ -7,6 +7,8 @@
 #include <maya/MGlobal.h>
 #include <maya/MItSelectionList.h>
 #include <maya/MItDependencyGraph.h>
+#include <maya/MItGeometry.h>
+#include <maya/MPointArray.h>
 
 const char* WrapCmd::kName = "awWrap";
 const char* WrapCmd::kNameFlagShort = "-n";
@@ -165,12 +167,46 @@ MStatus WrapCmd::redoIt() {
 	// Get the created wrap deformer node
 	status = GetLatestWrapNode();
 
+	// Calculate the binding
+	status = CalculateBinding(pathDriver_);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
 	// Connect the driver mesh to the wrap deformer
 	MFnDependencyNode fnNode(oWrapNode_, &status);
 	CHECK_MSTATUS_AND_RETURN_IT(status);
 	setResult(fnNode.name());
 	// Store all binding information on the deformer
 	return status;
+}
+
+MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh) {
+	MStatus status;
+	BindData bindData;
+
+	MObject oBindMesh = pathBindMesh.node();
+	MMatrix driverMatrix = pathBindMesh.inclusiveMatrix();
+	status = bindData.intersector.create(oBindMesh, driverMatrix);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+
+	for (unsigned int geomIndex = 0; geomIndex < pathDriven_.length(); ++geomIndex) {
+		MItGeometry itGeo(pathDriven_[geomIndex], &status);
+		MPointArray inputPoints;
+		// Grabbing points straight out of the iterator is usually more efficient than using the iterator
+		// then just calculate and put them back
+		status = itGeo.allPositions(inputPoints, MSpace::kWorld);
+		CHECK_MSTATUS_AND_RETURN_IT(status);
+
+		MPointOnMesh pointOnMesh;
+		for (unsigned int i = 0; i < inputPoints.length(); i++) {
+			bindData.intersector.getClosestPoint(inputPoints[i], pointOnMesh);
+			// Convert into world space
+			// calling getPoint is going to be in the local space of the driver mesh
+
+			MPoint closestPoint = MPoint(pointOnMesh.getPoint()) * driverMatrix;
+
+		}
+		
+	}
+	return MS::kSuccess;
 }
 
 MStatus WrapCmd::undoIt() {

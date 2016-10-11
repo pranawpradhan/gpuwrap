@@ -1,12 +1,32 @@
 #ifndef WRAPCMD_H
 #define WRAPCMD_H
 
+#include <vector>
+
 #include <maya/MArgList.h>
 #include <maya/MPxCommand.h>
 #include <maya/MDagPath.h>
 #include <maya/MDagPathArray.h>
 #include <maya/MSelectionList.h>
 #include <maya/MDGModifier.h>
+#include <maya/MMeshIntersector.h>
+
+struct BaryCoords
+{
+	float coords[3];
+	float operator[](int index) const { return coords[index]; }
+	float operator[](int index) { return coords[index]; }
+};
+
+struct BindData {
+	MMeshIntersector intersector;
+	std::vector<BaryCoords> coords;
+	// MIntArray will always be length 3
+	// Vector is per-vertex storage on the deforming mesh.
+	// For each vertex on the deforming mesh, it's storing the 3 triangle mesh ids
+	std::vector<MIntArray> triangleVertices;
+
+};
 
 /*
 	The Wrap Command is used to create new Wrap Deformers
@@ -49,6 +69,8 @@ private:
 	@return MStatus
 	*/
 	MStatus GetShapeNode(MDagPath& path, bool intermediate = false);
+
+	MStatus CalculateBinding(MDagPath& path);
 
 	MString name_; // Name of Wrap node to create
 	MDagPath pathDriver_; // Path to the shape wrapping the other shape
