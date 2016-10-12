@@ -1,7 +1,17 @@
 #ifndef WRAPDEFORMER_H
 #define WRAPDEFORMER_H
 
+#include <vector>
 #include <maya/MPxDeformerNode.h>
+#include <maya/MPointArray.h>
+#include "common.h"
+
+struct TaskData {
+	MPointArray driverPoints;
+	MPointArray points;
+	std::vector<MIntArray> triangleVerts;
+	std::vector<BaryCoords> baryCoords;
+};
 
 class Wrap : public MPxDeformerNode {
 public:

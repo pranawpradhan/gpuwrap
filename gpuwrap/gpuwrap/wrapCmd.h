@@ -1,6 +1,8 @@
 #ifndef WRAPCMD_H
 #define WRAPCMD_H
 
+#include "common.h"
+
 #include <vector>
 
 #include <maya/MArgList.h>
@@ -11,12 +13,6 @@
 #include <maya/MDGModifier.h>
 #include <maya/MMeshIntersector.h>
 #include <maya/MPointArray.h>
-
-struct BaryCoords {
-	float coords[3];
-	float operator[](int index) const { return coords[index]; }
-	float& operator[](int index) { return coords[index]; }
-};
 
 struct BindData {
 	MPointArray driverPoints;
