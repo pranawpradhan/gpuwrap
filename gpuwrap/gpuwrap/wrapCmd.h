@@ -13,9 +13,12 @@
 #include <maya/MDGModifier.h>
 #include <maya/MMeshIntersector.h>
 #include <maya/MPointArray.h>
+#include <maya/MFloatVectorArray.h>
+#include <maya/MMatrixArray.h>
 
 struct BindData {
 	MPointArray driverPoints;
+	MFloatVectorArray driverNormals;
 	// The first vector will be accessed by the face id
 	// The second vector will be accessed by the triangle id on that face
 	// MIntArray will be 3 vertex indices on that triangle
@@ -26,6 +29,7 @@ struct BindData {
 	// Vector is per-vertex storage on the deforming mesh.
 	// For each vertex on the deforming mesh, it's storing the 3 triangle mesh ids
 	std::vector<MIntArray> triangleVertices;
+	MMatrixArray bindMatrices;
 };
 
 /*

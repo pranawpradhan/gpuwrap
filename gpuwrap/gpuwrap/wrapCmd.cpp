@@ -10,6 +10,7 @@
 #include <maya/MItGeometry.h>
 #include <maya/MPointArray.h>
 #include <maya/MFnMesh.h>
+#include <maya/MFnMatrixData.h>
 
 const char* WrapCmd::kName = "awWrap";
 const char* WrapCmd::kNameFlagShort = "-n";
@@ -207,6 +208,7 @@ MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh, MDGModifier& dgMod) {
 	MFnMesh fnBindMesh(pathBindMesh, &status);
 	CHECK_MSTATUS_AND_RETURN_IT(status);
 	fnBindMesh.getPoints(bindData.driverPoints, MSpace::kWorld);
+	fnBindMesh.getVertexNormals(false, bindData.driverNormals, MSpace::kWorld);
 	// Resize the pftv vector to the polygon count
 	bindData.perFaceTriangleVertices.resize(fnBindMesh.numPolygons());
 
@@ -241,6 +243,9 @@ MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh, MDGModifier& dgMod) {
 		MPlug plugTriangleVerts = plugBind.child(Wrap::aTriangleVerts, &status);
 		CHECK_MSTATUS_AND_RETURN_IT(status);
 		MPlug plugBarycentricWeights = plugBind.child(Wrap::aBarycentricWeights, &status);
+		CHECK_MSTATUS_AND_RETURN_IT(status);
+		MPlug plugBindMatrices = plugBind.child(Wrap::aBindMatrix, &status);
+		CHECK_MSTATUS_AND_RETURN_IT(status);
 
 		MItGeometry itGeo(pathDriven_[geomIndex], &status);
 		MPointArray inputPoints;
@@ -253,6 +258,7 @@ MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh, MDGModifier& dgMod) {
 		// Resizing vectors
 		bindData.coords.resize(itGeo.count());
 		bindData.triangleVertices.resize(itGeo.count());
+		bindData.bindMatrices.setLength(itGeo.count());
 
 		// By the end of the loop, bind data will hold the per-vertex coords & verts for each triangle.
 		for (unsigned int i = 0; i < inputPoints.length(); i++) {
@@ -273,7 +279,18 @@ MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh, MDGModifier& dgMod) {
 									  bindData.driverPoints[bindData.triangleVertices[i][1]],
 									  bindData.driverPoints[bindData.triangleVertices[i][2]],
 									  bindData.coords[i]);
-																		  
+			
+			// Three things needed to generate transform matrix
+			MPoint origin;
+			MVector up;
+			MVector normal;
+
+			CalculateBasisComponents(bindData.coords[i], bindData.triangleVertices[i],
+									 bindData.driverPoints, bindData.driverNormals,
+									 origin, up, normal);
+
+			CreateMatrix(origin, normal, up, bindData.bindMatrices[i]);
+			bindData.bindMatrices[i] = bindData.bindMatrices[i].inverse();
 
 		}
 
@@ -282,6 +299,16 @@ MStatus WrapCmd::CalculateBinding(MDagPath& pathBindMesh, MDGModifier& dgMod) {
 		// out of geometry iterator because as we're iterating, indices aren't going to be continuous
 		for (int i = 0; !itGeo.isDone(); itGeo.next(), ++i) {
 			int logicalIndex = itGeo.index();
+
+			// Store the bind matrix
+			MFnMatrixData fnMatrixData;
+			MObject oMatrixData = fnMatrixData.create(bindData.bindMatrices[i], &status);
+			CHECK_MSTATUS_AND_RETURN_IT(status);
+			MPlug plugBindMatrixElement = plugBindMatrices.elementByLogicalIndex(logicalIndex, &status);
+			CHECK_MSTATUS_AND_RETURN_IT(status);
+			status = dgMod.newPlugValue(plugBindMatrixElement, oMatrixData);
+			CHECK_MSTATUS_AND_RETURN_IT(status);
+
 			// Storing triangle vertices
 			MFnNumericData fnNumericData;
 			MObject oNumericData = fnNumericData.create(MFnNumericData::k3Int, &status);
