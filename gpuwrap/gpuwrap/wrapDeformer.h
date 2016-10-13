@@ -4,11 +4,15 @@
 #include <vector>
 #include <maya/MPxDeformerNode.h>
 #include <maya/MPointArray.h>
+#include <maya/MMatrixArray.h>
+#include <maya/MFloatVectorArray.h>
 #include "common.h"
 
 struct TaskData {
 	MPointArray driverPoints;
 	MPointArray points;
+	MMatrixArray bindMatrices;
+	MFloatVectorArray driverNormals;
 	std::vector<MIntArray> triangleVerts;
 	std::vector<BaryCoords> baryCoords;
 };

@@ -93,6 +93,7 @@ MStatus GetBindInfo(MDataBlock& data, unsigned int geomIndex, TaskData& taskData
 
 	MArrayDataHandle hTriangleVerts = hBindData.child(Wrap::aTriangleVerts);
 	MArrayDataHandle hBarycentricWeights = hBindData.child(Wrap::aBarycentricWeights);
+	MArrayDataHandle hBindMatrix = hBindData.child(Wrap::aBindMatrix);
 
 	unsigned int numComponents = hTriangleVerts.elementCount();
 	if (numComponents == 0) {
@@ -108,7 +109,12 @@ MStatus GetBindInfo(MDataBlock& data, unsigned int geomIndex, TaskData& taskData
 		if (logicalIndex >= taskData.triangleVerts.size()) {
 			taskData.triangleVerts.resize(logicalIndex + 1);
 			taskData.baryCoords.resize(logicalIndex + 1);
+			taskData.bindMatrices.setLength(logicalIndex + 1);
 		}
+		// Get bind matrix
+		taskData.bindMatrices[logicalIndex] = hBindMatrix.inputValue().asMatrix();
+
+
 		// Get the triangle vertex binding
 		int3& verts = hTriangleVerts.inputValue(&status).asInt3();
 		CHECK_MSTATUS_AND_RETURN_IT(status);
@@ -128,6 +134,7 @@ MStatus GetBindInfo(MDataBlock& data, unsigned int geomIndex, TaskData& taskData
 
 		hTriangleVerts.next();
 		hBarycentricWeights.next();
+		hBindMatrix.next();
 
 	}
 
@@ -166,23 +173,41 @@ MStatus Wrap::deform(MDataBlock& data, MItGeometry& itGeo, const MMatrix& localT
 	MFnMesh fnDriver(oDriverGeo, &status);
 	CHECK_MSTATUS_AND_RETURN_IT(status);
 
-	//Get the driver point positions
+	//Get the driver point positions and vertex normals
 	status = fnDriver.getPoints(taskData.driverPoints, MSpace::kWorld);
+	CHECK_MSTATUS_AND_RETURN_IT(status);
+	status = fnDriver.getVertexNormals(false, taskData.driverNormals);
 	CHECK_MSTATUS_AND_RETURN_IT(status);
 
 	// Can't get world space because I'm inside a deformer
 	// Can only get world space positions if you pass in a DAG path.
 	itGeo.allPositions(taskData.points);
-
+	
+	MMatrix matrix;
+	MMatrix drivenInverseMatrix = localToWorldMatrix.inverse();
 
 	// Create temporary information using data points
 	for (unsigned int i = 0; i < taskData.points.length(); ++i) {
 		MIntArray& triangleVertices = taskData.triangleVerts[i];
 		BaryCoords& baryCoords = taskData.baryCoords[i];
-		taskData.points[i] = (taskData.driverPoints[triangleVertices[0]] * baryCoords[0]) +
-					         (taskData.driverPoints[triangleVertices[1]] * baryCoords[1]) +
-							 (taskData.driverPoints[triangleVertices[2]] * baryCoords[2]);
+		MMatrix& bindMatrix = taskData.bindMatrices[i];
+
+		// Three things needed to generate transform matrix
+		MPoint origin;
+		MVector up;
+		MVector normal;
+
+		CalculateBasisComponents(baryCoords, triangleVertices,
+			taskData.driverPoints, taskData.driverNormals,
+			origin, up, normal);
+
+		CreateMatrix(origin, normal, up, matrix);
 		
+		// deformed point
+		// multiplying bindMatrix * matrix gives you an offset from where it was bound, to where it currently is.
+
+		MPoint newPoint = (taskData.points[i] * localToWorldMatrix) * (bindMatrix * matrix) * drivenInverseMatrix;
+		taskData.points[i] = newPoint;
 	}
 
 	status = itGeo.setAllPositions(taskData.points);
